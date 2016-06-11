@@ -2,28 +2,16 @@ import ObservStructA from 'observ-struct-a';
 import ObservMeta from 'observ-meta';
 import ObservValue from 'observ';
 
-// override these in your loader config?
-//import appRoute from 'app-route';
-export let appRoute = (href, context, opts) =>
-{
-  let page = (ctx, opts, disposeSignal) => ObservValue('Please override the appRoute export');
-  page.render = pageState =>
-  {
-    throw new Error('Please override the appRoute export');
-  };
-  
-  return {
-    page,
-    context,
-  };
-};
-
 let { obs: pageState, obsobs: pageObs } = ObservMeta({ title: "Loading..." });
+
+let noop = () => {};
 
 let currentUrl = ObservValue(document.location.href);
 window.addEventListener('popstate', e =>
 {
+  navState.isNavigating.set(true);
   currentUrl.set(document.location.href);
+  navigate(document.location.href, { state: history.state });
 });
 
 export let navState = ObservStructA({
@@ -35,6 +23,8 @@ export let navState = ObservStructA({
   isNavigating: false,
 });
 
+let router = () => { throw new Error("Please call setRouter to set your router function"); };
+export function setRouter(r) { router = r; }
 
 currentUrl(href =>
 {
@@ -43,12 +33,16 @@ currentUrl(href =>
     return;
   }
   
-  navigate(href);
+  navigate(href, { state: history.state });
 });
 
 export async function navigate(href, opts)
 {
-  opts = opts || {};
+  opts = Object.assign({ async: true }, opts);
+  
+  // try canceling previous navigation. TODO: consider not doing it if href is same?
+  // TODO: event?
+  navigate.cancel();
   
   navState.isNavigating.set(true);
   let newPageState, disposeSignal, page, pageDisposer;
@@ -58,37 +52,33 @@ export async function navigate(href, opts)
     let url = new URL(href);
     if (url.hash.startsWith('#/')) url = new URL(url.hash.substr(), document.location.origin);
     
-    let context = {
-      fullUrl: url,
-      baseUri: '',
-    };
-    let res = appRoute(url.pathname + url.search, context, opts);
+    opts.fullUrl = url;
+    page = router(url.pathname + url.search, opts);
       
-    if (res == null)
+    if (page == null)
     {
       // TODO: figure out graceful way to handle 404s
       throw new Error('Could not resolve ' + href);
     }
     
-    if (res instanceof Promise) res = await res;
-    
-    page = res.page;
-    context = res.context;
-    
     let disposePromise = new Promise(resolve => pageDisposer = resolve);
     disposeSignal = disposePromise.then.bind(disposePromise);
-    
     disposeSignal(() => cancelled = true);
+    navigate.cancel = disposeSignal;
     
-    // TODO: restore state from history.state
-    newPageState = page(context, opts, disposeSignal);
+    if (page instanceof Promise)
+    {
+      page = await Promise.race(disposePromise, page);
+      if (cancelled) return;
+    }
     
-    if (!cancelled && newPageState.ready instanceof Promise) await newPageState.ready;
+    newPageState = page(opts, disposeSignal);
     
-    if (cancelled) return;
-    
-    // trigger previous page's disposeSignal
-    navState.pageDisposer()();
+    if (newPageState.ready instanceof Promise)
+    {
+      await Promise.race(disposePromise, newPageState.ready);
+      if (cancelled) return;
+    }
     
     if (opts.history)
     {
@@ -97,11 +87,9 @@ export async function navigate(href, opts)
         ? opts.history
         : window.history[opts.history].bind(window.history);
       historyFunc(pageStateVal, pageStateVal.title, href);
+      
+      currentUrl.set(href);
     }
-    
-    currentUrl.set(href);
-    
-    // TODO: remember scroll position
   }
   catch (e)
   {
@@ -112,7 +100,13 @@ export async function navigate(href, opts)
   finally
   {
     navState.isNavigating.set(false);
+    navigate.cancel = noop;
   }
+  
+  // trigger previous page's disposeSignal
+  navState.pageDisposer()();
+  
+  // TODO: remember scroll position?
   
   navState.set({
     pageObs: newPageState,
@@ -122,14 +116,19 @@ export async function navigate(href, opts)
   });
 }
 
+navigate.cancel = noop;
+
 export function registerAnchorEvents(delegator)
 {
-  delegator.addEventListener(document.body, 'click', e  =>
+  // TODO: also register escape for navigate cancellation
+  // TODO: intercept submit event?
+  delegator.addGlobalEventListener('click', e  =>
   {
     let target = e.target;
     if (target.tagName !== 'A' || target.target) return;
     if (e.which !== 0 || e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return;
     
+    // TODO: check target href origin
     navigate(target.href, { history: 'pushState' });
     e.preventDefault();
   });
