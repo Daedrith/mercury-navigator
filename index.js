@@ -38,7 +38,7 @@ currentUrl(href =>
 
 export async function navigate(href, opts)
 {
-  opts = Object.assign({ async: true }, opts);
+  opts = Object.assign({}, opts);
   
   // try canceling previous navigation. TODO: consider not doing it if href is same?
   // TODO: event?
@@ -49,8 +49,8 @@ export async function navigate(href, opts)
   let cancelled = false;
   try
   {
-    let url = new URL(href);
-    if (url.hash.startsWith('#/')) url = new URL(url.hash.substr(), document.location.origin);
+    let url = new URL(href, document.location.origin);
+    if (url.hash.startsWith('#/')) url = new URL(url.hash.slice(1), document.location.origin);
     
     opts.fullUrl = url;
     page = router(url.pathname + url.search, opts);
@@ -116,7 +116,7 @@ export async function navigate(href, opts)
   });
 }
 
-navigate.cancel = noop;
+navigate.cancel = noop; // TODO: getter property over variable
 
 export function registerAnchorEvents(delegator)
 {
