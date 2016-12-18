@@ -67,5 +67,5 @@ Returns: either directly or as a promise, a function to create a page state:
 Arguments:
 - href: url to navigate to, relative to current location; if the url has a fragment that begins with '/', treat the fragment as the href when invoking `router`
 - opts: an object with any properties you'd like to pass to router and the page factory
-  - `.history`: either a function or the name of a method on the `window.history` object. Typically when called from an anchor click event, you'd pass "pushState"
+  - `.history`: either a function or the name of a method on the `window.history` object, or null. Defaults to "pushState".
 

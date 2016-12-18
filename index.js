@@ -38,7 +38,7 @@ currentUrl(href =>
 
 export async function navigate(href, opts)
 {
-  opts = Object.assign({}, opts);
+  opts = Object.assign({ history: 'pushState' }, opts);
   
   // try canceling previous navigation. TODO: consider not doing it if href is same?
   // TODO: event?
