@@ -11,7 +11,7 @@ window.addEventListener('popstate', e =>
 {
   navState.isNavigating.set(true);
   currentUrl.set(document.location.href);
-  navigate(document.location.href, { state: history.state });
+  navigate(document.location.href, { state: history.state, history: false });
 });
 
 export let navState = ObservStructA({
@@ -25,6 +25,9 @@ export let navState = ObservStructA({
 
 let router = () => { throw new Error("Please call setRouter to set your router function"); };
 export function setRouter(r) { router = r; }
+
+let postRenderRunner = null;
+export function setPostRenderRunner(r) { postRenderRunner = r; };
 
 currentUrl(href =>
 {
@@ -68,7 +71,7 @@ export async function navigate(href, opts)
     
     if (page instanceof Promise)
     {
-      page = await Promise.race(disposePromise, page);
+      page = await Promise.race([disposePromise, page]);
       if (cancelled) return;
     }
     
@@ -76,7 +79,7 @@ export async function navigate(href, opts)
     
     if (newPageState.ready instanceof Promise)
     {
-      await Promise.race(disposePromise, newPageState.ready);
+      await Promise.race([disposePromise, newPageState.ready]);
       if (cancelled) return;
     }
     
@@ -107,6 +110,11 @@ export async function navigate(href, opts)
   navState.pageDisposer()();
   
   // TODO: remember scroll position?
+  if (postRenderRunner) postRenderRunner(() =>
+  {
+    let elem = document.querySelector('input[autofocus]');
+    if (elem && typeof elem.focus === 'function') elem.focus();
+  });
   
   navState.set({
     pageObs: newPageState,
